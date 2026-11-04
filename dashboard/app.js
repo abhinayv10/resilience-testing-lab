@@ -100,6 +100,7 @@ function since(iso) {
 // ---------------------------------------------------------------- tabs, kill switch, unblock
 $$(".tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 document.addEventListener("click", (e) => { const b = e.target.closest("[data-go]"); if (b) showTab(b.dataset.go); });
+window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t !== currentTab && $("#tab-" + t)) showTab(t); });
 function showTab(name) {
   currentTab = name;
   $$(".tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
@@ -196,7 +197,7 @@ function renderHealth(v) {
   if (safetyState && safetyState.blocked) { st = ["Experiments blocked", "critical"]; text = safetyState.blocked.reason; }
   else if (m.docker_error) { st = ["Docker unreachable", "critical"]; text = m.docker_error; }
   else if (v && v.source === "live" && ["injecting", "active"].includes(v.state)) { st = ["Fault active", "serious"]; text = `${faultIs(v.config)}. ${v.config.remediation === "agent" ? "The self-healing agent has to find and fix it." : ""}`; }
-  else if (v && v.source === "live") { st = ["Experiment running", "warning"]; text = `${faultTitle(v.config)}: ${String(v.state || "").replace(/_/g, " ")}.`; }
+  else if (v && v.source === "live" && v.busy) { st = ["Experiment running", "warning"]; text = `${faultTitle(v.config)}: ${String(v.state || "").replace(/_/g, " ")}.`; }
   else if (!m.ts) { st = ["Waiting for the first check", "unknown"]; text = "The monitor checks the application every 5 s."; }
   else if (!m.app_ok) { st = ["Application degraded", "critical"]; text = (m.probes || []).filter((p) => !p.ok).map((p) => `${WORKFLOWS[p.probe] || p.probe}: ${p.detail}`).join("; "); }
   else { st = ["All systems healthy", "good"]; text = `Paperless-ngx is answering normally. No fault is active. Last checked ${fmtTime(m.ts)}, every 5 s.`; }
@@ -214,7 +215,26 @@ function renderScore() {
   if (!scoreData) return;
   const o = scoreData.overall;
   $("#ov-score").innerHTML = o.score == null ? `<span class="muted">n/a</span>` : `${Math.round(o.score)}<small> / 100</small>`;
-  $("#ov-cov").textContent = o.score == null ? "no experiment scored yet" : `${o.scenarios_scored} of ${o.scenarios_total} failure scenarios tested`;
+  $("#ov-cov").textContent = o.score == null ? "no experiment scored yet" : `${o.scenarios_scored} of ${o.scenarios_total} failure scenarios scored. Covers only those faults.`;
+  const NAMES = { availability: "Availability", performance: "Performance", recovery: "Recovery" }, comps = o.components || {};
+  const meters = Object.keys(NAMES).filter((k) => comps[k] != null).map((k) => {
+    const pct = Math.round(comps[k] * 100);
+    return `<div class="meter"><div class="top"><span>${NAMES[k]} <span class="muted">· weight ${Math.round((o.weights[k] || 0) * 100)}%</span></span><b>${pct}%</b></div><div class="track"><div class="fill" style="width:${pct}%"></div></div></div>`;
+  });
+  $("#ov-breakdown").innerHTML = meters.length ? meters.join("") + (o.capped_unrecovered ? `<div class="small">${chip("Score capped at 25: a run did not recover", "critical")}</div>` : "") : `<div class="small muted">Appears once an experiment has been scored.</div>`;
+}
+// Properties rail beside the chart: facts about the experiment the chart shows.
+function renderRail(v) {
+  const el = $("#ov-props"), c = v && v.source !== "other" ? v.config : null;
+  if (!c || !c.target) { el.innerHTML = `<div><dt>Status</dt><dd class="muted">no experiment yet</dd></div>`; return; }
+  const dur = v.fault_start && v.fault_end ? secs(v.fault_end - v.fault_start) : "–";
+  const state = String(v.state || "–").replace(/_/g, " ");
+  const tone = toneOf(v.state === "completed" ? "completed" : "") === "good" ? "good" : /abort|fail|block|interrupt/.test(state) ? "critical" : "warning";
+  const row = (k, val) => `<div><dt>${k}</dt><dd>${val}</dd></div>`;
+  el.innerHTML = row("Source", v.source === "live" ? "running now" : "latest recorded")
+    + row("Fault", esc(faultName(c))) + row("Target", esc(cap(svc(c.target))))
+    + row("Planned", c.duration_s != null ? `${c.duration_s} s` : "–") + row("Fault held", dur)
+    + row("State", chip(cap(state), tone)) + row("Run", `<span class="mono small muted">${esc(v.run_id || "–")}</span>`);
 }
 let metricsData = null;
 function spark(values, colorVar) {
@@ -264,7 +284,7 @@ async function loadGraph() {
   };
   ids.forEach((i) => d(i));
   const layers = {}; g.nodes.forEach((n) => (layers[depth[n.id]] ||= []).push(n));
-  const NW = 168, NH = 56, GX = 56, GY = 14;
+  const NW = 196, NH = 56, GX = 56, GY = 14;
   const nl = Object.keys(layers).length, maxRows = Math.max(1, ...Object.values(layers).map((l) => l.length));
   const W = nl * NW + (nl - 1) * GX + 8, H = maxRows * NH + (maxRows - 1) * GY + 8, pos = {};
   Object.entries(layers).forEach(([L, ns]) => ns.forEach((n, i) => {
@@ -282,7 +302,7 @@ async function loadGraph() {
     const state = hit ? "✕ fault active now" : n.kind === "external" ? "sends requests" : `${tone === "good" ? "✓" : "!"} ${n.status}` + (n.id === lastOn ? " · last fault here" : "");
     s += `<g><rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="8" fill="var(--surface)" stroke="${stroke}" stroke-width="${hit ? 3 : 1.5}" ${n.id === lastOn ? `stroke-dasharray="5 3"` : ""}><title>${esc(n.image || n.note || n.id)}</title></rect>
       <text x="${p.x + 12}" y="${p.y + 23}" font-size="14" font-weight="700" fill="var(--text)">${esc(cap(svc(n.id)))}</text>
-      <text x="${p.x + 12}" y="${p.y + 42}" font-size="12" fill="var(--text-2)">${esc(state)}</text></g>`;
+      <text x="${p.x + 12}" y="${p.y + 42}" font-size="11" fill="var(--text-2)">${esc(state)}</text></g>`;
   }
   $("#ov-graph").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="max-height:${Math.round(H * 0.95)}px" role="img" aria-label="dependency map">${s}</svg>`;
 }
@@ -304,7 +324,7 @@ function bands(sx, opts, top, h) {
   const band = (a, b, fill, label) => {
     if (!a) return "";
     const x0 = sx(a), x1 = sx(b || opts.tEnd);
-    return `<rect x="${x0}" y="${top}" width="${Math.max(1, x1 - x0)}" height="${h}" fill="var(${fill})"/><text x="${x0 + 5}" y="${top + 15}" font-size="13" font-weight="600" fill="var(--text-2)">${label}</text>`;
+    return `<rect x="${x0}" y="${top}" width="${Math.max(1, x1 - x0)}" height="${h}" fill="var(${fill})"/><text x="${x0 + 5}" y="${top + 15}" font-size="14" font-weight="600" fill="var(--text-2)">${label}</text>`;
   };
   return band(opts.faultStart, opts.faultEnd, "--fault-band", "fault active") + (opts.faultEnd && opts.recoveredAt ? band(opts.faultEnd, opts.recoveredAt, "--recovery-band", "") : "");
 }
@@ -321,13 +341,13 @@ function latencyChart(el, samples, opts = {}) {
   let g = bands(sx, { ...opts, tEnd: t1 }, m.t, H - m.t - m.b);
   (opts.marks || []).filter((k) => k.t >= t0 && k.t <= t1).forEach((k, i) => {
     const x = sx(k.t);
-    g += `<line x1="${x}" x2="${x}" y1="${m.t}" y2="${H - m.b}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3"/><text x="${x + 4}" y="${m.t + 32 + i * 15}" font-size="12" font-weight="600" fill="var(--accent)">${esc(k.label)}</text>`;
+    g += `<line x1="${x}" x2="${x}" y1="${m.t}" y2="${H - m.b}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3"/><text x="${x + 4}" y="${m.t + 32 + i * 15}" font-size="13" font-weight="600" fill="var(--accent)">${esc(k.label)}</text>`;
   });
   for (let i = 0; i <= 4; i++) {
     const v = (ymax / 4) * i, y = sy(v);
-    g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${y + 4}" text-anchor="end" font-size="12" fill="var(--muted)">${fmtMs(v)}</text>`;
+    g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${y + 4}" text-anchor="end" font-size="13" fill="var(--muted)">${fmtMs(v)}</text>`;
   }
-  for (const t of timeTicks(t0, t1)) g += `<text x="${sx(t)}" y="${H - 8}" text-anchor="middle" font-size="12" fill="var(--muted)">${hm(t)}</text>`;
+  for (const t of timeTicks(t0, t1)) g += `<text x="${sx(t)}" y="${H - 8}" text-anchor="middle" font-size="13" fill="var(--muted)">${hm(t)}</text>`;
   for (const p of probes) {
     const pts = data.filter((s) => s.probe === p).sort((a, b) => a.ts - b.ts);
     if (!pts.length) continue;
@@ -618,7 +638,7 @@ function cpFindingsTable(c) {
   rows(tbody, html, 6, "");
 }
 async function loadCampaign() {
-  let d; try { d = await api("/api/campaign/latest"); } catch (e) { $("#cp-text").textContent = "Unavailable: " + e.message; return; }
+  let d; try { d = await api("/api/campaign/latest"); } catch (e) { $("#cp-status").innerHTML = chip("Status unknown", "critical"); $("#cp-text").textContent = "Unavailable: " + e.message; $("#cp-start").disabled = true; return; }
   const c = d.campaign;
   const [st, text] = cpHero(c);
   $("#cp-status").innerHTML = chip(st[0], st[1]); $("#cp-text").textContent = text;
@@ -653,7 +673,7 @@ async function tickOverview() {
   if (currentTab !== "overview") return;
   let v; try { v = await getView(); } catch { return; }
   lastView = v;
-  renderHealth(v); renderOverviewRun(v); renderLog(v);
+  renderHealth(v); renderOverviewRun(v); renderLog(v); renderRail(v);
 }
 async function refreshAll() {
   await loadOverview().catch(() => {});

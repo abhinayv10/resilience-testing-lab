@@ -3,22 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Paperless Chaos Lab</title>
+<link rel="preload" href="/static/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">
-    <strong>Paperless Chaos Lab</strong>
-    <span class="muted small">Resilience testing with a self-healing agent</span>
-  </div>
-  <nav class="tabs" role="tablist">
-    <button data-tab="overview" class="active">Overview</button>
-    <button data-tab="campaign">Scan &amp; inject</button>
-  </nav>
-  <div class="topstate">
-    <span id="state-pill" class="pill">connecting…</span>
-    <button id="kill" class="kill" title="Abort any running experiment and remove every fault now">■ KILL SWITCH</button>
+  <div class="bar">
+    <div class="brand"><span class="mark" aria-hidden="true"></span><strong>Chaos Lab</strong><span class="eyebrow">Paperless-ngx</span></div>
+    <div class="bar-right">
+      <nav class="tabs" role="tablist" aria-label="Pages">
+        <button data-tab="overview" class="active">Overview</button>
+        <button data-tab="campaign">Scan &amp; inject</button>
+      </nav>
+      <div class="topstate">
+        <span id="state-pill" class="pill">connecting…</span>
+        <button id="kill" class="kill" title="Abort any running experiment and remove every fault now">■ KILL SWITCH</button>
+      </div>
+    </div>
   </div>
 </header>
 <div id="blocked-banner" class="banner critical" hidden>
@@ -30,61 +33,82 @@
 <main>
   <!-- ======================================================== OVERVIEW -->
   <section id="tab-overview" class="tab active">
-    <div class="card healthbar">
-      <div class="hb-main">
-        <div id="ov-status" class="hero-status">–</div>
-        <p id="ov-text" class="muted"></p>
+    <div class="hero">
+      <div>
+        <div class="eyebrow">Overview · live</div>
+        <h1 class="headline">Is Paperless-ngx holding up? <span>Live health, and what the last fault did to it.</span></h1>
+        <div class="verdict">
+          <div id="ov-status" class="hero-status">–</div>
+          <p id="ov-text" class="lede"></p>
+        </div>
+        <ul class="strip" id="ov-comps" aria-label="Component health"></ul>
       </div>
-      <ul class="hb-comps" id="ov-comps" aria-label="Component health"></ul>
-      <div class="hb-score">
-        <div class="k">Resilience</div>
-        <div class="v" id="ov-score">–</div>
+      <div class="hero-fig">
+        <div class="eyebrow">Resilience score</div>
+        <div class="bignum" id="ov-score">–</div>
         <div class="small muted" id="ov-cov"></div>
       </div>
     </div>
 
     <div class="metrics" id="ov-metrics"></div>
 
-    <div class="card">
-      <div class="row between"><h2>Resource use</h2><span class="small muted">live from Docker, every 15 s</span></div>
-      <div class="tblwrap"><table class="tbl res" id="ov-res"><thead><tr><th>Component</th><th>CPU</th><th>Memory</th><th>Limits</th></tr></thead><tbody></tbody></table></div>
-    </div>
-
-    <div class="grid split">
-      <div class="card">
-        <h2>What the application depends on <span class="muted small" id="ov-graph-note"></span></h2>
-        <div id="ov-graph" class="graph"></div>
-        <h2 class="mt">Effect on each user workflow <span class="muted small" id="wf-note"></span></h2>
-        <div id="wf-ov"></div>
-      </div>
+    <div class="grid main-rail">
       <div class="card">
         <h2>Response time during the experiment <span class="muted small">hover for values</span></h2>
-        <div class="legend small" id="lg-ov"></div>
+        <p class="note-line" id="wf-note2">Each line is one user workflow. A cross marks a failed request.</p>
+        <div class="legend" id="lg-ov"></div>
         <div id="chart-ov" class="chart"></div>
-        <details><summary class="small muted">Event log</summary>
+        <details class="mt"><summary class="small muted">Event log</summary>
           <div class="scroll log"><table class="tbl" id="ov-log"><tbody></tbody></table></div>
         </details>
       </div>
+      <aside class="card rail" aria-label="Properties">
+        <h3>Experiment shown</h3>
+        <dl class="props" id="ov-props"><div><dt>Status</dt><dd class="muted">no experiment yet</dd></div></dl>
+        <h3>Resilience breakdown</h3>
+        <div id="ov-breakdown"><div class="small muted">Appears once an experiment has been scored.</div></div>
+      </aside>
+    </div>
+
+    <div class="grid split deps">
+      <div class="card">
+        <h2>What the application depends on <span class="muted small" id="ov-graph-note"></span></h2>
+        <p class="note-line">Discovered from Compose and the running containers. A cross marks the service with an active fault.</p>
+        <div id="ov-graph" class="graph"></div>
+      </div>
+      <div class="card">
+        <h2>Effect on each user workflow <span class="muted small" id="wf-note"></span></h2>
+        <p class="note-line">Failure rate and response time before, during and after the fault.</p>
+        <div id="wf-ov"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Resource use <span class="small muted">live from Docker, every 15 s</span></h2>
+      <div class="tblwrap"><table class="tbl res" id="ov-res"><thead><tr><th>Component</th><th>CPU</th><th>Memory</th><th>Limits</th></tr></thead><tbody></tbody></table></div>
     </div>
   </section>
 
   <!-- ======================================================== SCAN & INJECT -->
   <section id="tab-campaign" class="tab">
-    <div class="card hero">
-      <div class="hero-main">
-        <div class="page-head"><h1>Resilience campaign</h1><span id="cp-status" class="pill"></span></div>
+    <div class="hero" style="grid-template-columns: minmax(0, 1fr)">
+      <div>
+        <div class="eyebrow">Scan &amp; inject · campaign</div>
+        <h1 class="headline">Where does it break, and can it fix itself? <span>Scan, confirm, inject, heal, report.</span></h1>
+        <div class="verdict"><span id="cp-status" class="pill"></span></div>
         <p id="cp-text" class="hero-text"></p>
         <div class="row" style="align-items:center">
           <button id="cp-start" class="primary big">Start resilience scan</button>
           <button id="cp-cancel" hidden>Cancel</button>
-          <span class="small muted" id="cp-meta"></span>
+          <span class="small muted mono" id="cp-meta"></span>
         </div>
+        <div class="hl-kpis mt" id="cp-kpis"></div>
       </div>
-      <div class="hl-kpis" id="cp-kpis"></div>
     </div>
 
     <div class="card">
-      <h2>Campaign graph <span class="muted small">LangGraph: scan → AI ranks → AI selects → you confirm → agent injects → self-healing → report</span></h2>
+      <h2>Campaign graph</h2>
+      <p class="note-line">LangGraph: scan, AI ranks, AI selects, you confirm, agent injects, self-healing, report.</p>
       <ol class="flow cp-flow" id="cp-flow"></ol>
     </div>
 
@@ -117,7 +141,7 @@
         <span id="cp-live-status"></span>
       </div>
       <div class="incident" id="cp-moments"></div>
-      <div class="legend small" id="lg-cp"></div>
+      <div class="legend" id="lg-cp"></div>
       <div id="cp-chart" class="chart"><div class="empty">The live chart appears when an experiment runs.</div></div>
       <div id="cp-wf" class="mt"></div>
 
