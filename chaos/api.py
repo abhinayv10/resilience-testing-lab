@@ -64,13 +64,13 @@ AUTO = "auto"
 AGENT_KEY = "agent_mode"
 # the agent needs time to learn, detect, ask the model and verify; shorter
 # faults would end at the engine's deadline before the agent could act
-AGENT_MIN_DURATION_S = 90
+AGENT_MIN_DURATION_S = config.AGENT_HOLD_S
 
 
 def create_app(store: Store | None = None, docker: Docker | None = None, engine: Engine | None = None,
                start_monitor: bool = True, provider=AUTO, settle_s: float | None = None,
                healer_kwargs: dict | None = None, agent_min_duration_s: int = AGENT_MIN_DURATION_S,
-               agent_default: bool = False, scan_rounds: int = 5) -> FastAPI:
+               agent_default: bool = False, scan_rounds: int = config.SCAN_ROUNDS) -> FastAPI:
     store = store or Store()
     docker = docker or Docker()
     engine = engine or Engine(store, docker, PaperlessClient)
@@ -86,7 +86,8 @@ def create_app(store: Store | None = None, docker: Docker | None = None, engine:
             store.event("ai_config_error", str(e), level="warning")
             return None
 
-    healer = Healer(store, docker, get_provider, notify=engine.agent_remediated, **(healer_kwargs or {}))
+    healer = Healer(store, docker, get_provider, notify=engine.agent_remediated,
+                    **(config.HEALER_KWARGS if healer_kwargs is None else healer_kwargs))
     engine.on_start = healer.watch
 
     def agent_enabled() -> bool:

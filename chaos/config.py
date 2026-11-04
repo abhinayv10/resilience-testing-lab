@@ -107,4 +107,18 @@ class Timings:
     removal_retries: int = 3
 
 
-TIMINGS = Timings()
+# CHAOS_SPEED=fast shortens the fixed waits for a live demo: a 10 s baseline
+# instead of 15 s, 3 s of post-recovery observation instead of 10 s, and
+# faster polling. The workload, safety limits, abort thresholds, the 5 s
+# request timeout and the recovery checks are identical in both profiles, so
+# results stay comparable; the shorter baseline simply has fewer samples.
+# (Probing more often was tried and rejected: a failing request takes 5 s to
+# time out while successes return at once, so a higher probe rate dilutes the
+# fault-phase error rate.)
+FAST = os.environ.get("CHAOS_SPEED", "normal").strip().lower() == "fast"
+TIMINGS = Timings(pre_baseline_s=10.0, post_observe_s=3.0, monitor_tick_s=0.5) if FAST else Timings()
+# self-healing agent: learn inside the shorter baseline, check more often
+HEALER_KWARGS: dict = {"learn_s": 8.0, "tick_s": 1.0} if FAST else {}
+AGENT_HOLD_S = 60 if FAST else 90     # longest a fault is held for the agent (it usually ends it sooner)
+SETTLE_S = 2.0 if FAST else 5.0       # pause between experiments of a sequence
+SCAN_ROUNDS = 3 if FAST else 5        # live requests per workflow in the resilience scan

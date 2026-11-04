@@ -15,11 +15,12 @@ import threading
 import time
 from typing import Callable, Optional
 
+from . import config
 from .engine import Engine, ExperimentRejected
 from .planner import to_config
 from .storage import Store
 
-SETTLE_S = 5.0
+SETTLE_S = config.SETTLE_S
 
 
 class Orchestrator:
