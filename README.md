@@ -1,4 +1,6 @@
-# Paperless-ngx Chaos Lab
+# Resilience Testing Lab
+
+*Formerly Paperless-ngx Chaos Lab (repo `chaos-paperless`). The system under test is Paperless-ngx.*
 
 **When a dependency of a real document system fails, what breaks for users, and can an agent fix it without being told what went wrong?**
 
@@ -81,7 +83,7 @@ All recorded runs were on Windows 11. The macOS/Linux commands below are the sam
 Windows (PowerShell):
 
 ```powershell
-cd chaos-paperless
+cd resilience-testing-lab
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 ```
@@ -89,7 +91,7 @@ python -m venv .venv
 macOS/Linux:
 
 ```bash
-cd chaos-paperless
+cd resilience-testing-lab
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
@@ -520,7 +522,7 @@ Everything is generated under `data/` (gitignored) except the secrets file.
 ## Project structure
 
 ```
-chaos-paperless/
+resilience-testing-lab/
 ├── chaos/                     # controller package
 │   ├── __main__.py            # command line: python -m chaos <command>
 │   ├── api.py                 # REST API, also serves the dashboard
